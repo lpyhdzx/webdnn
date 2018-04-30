@@ -6,6 +6,7 @@ import zlib
 import numpy as np
 
 from webdnn.backend.code_generator.allocator import Allocation, MemoryLayout
+from webdnn.backend.webgl.allocator import WebGLAllocation
 from webdnn.encoder.constant_encoder import ConstantEncoder
 
 tbl_floats = [2.750000021e-06, 7.249999726e-06, 1.875000089e-05, 3.624999954e-05, 5.874999624e-05, 8.624999464e-05,
@@ -59,10 +60,14 @@ class ConstantEncoderEightbit(ConstantEncoder):
     def encode(self, memory_layout: MemoryLayout) -> bytes:
         all_code = b""
         for alloc in memory_layout.allocations.values():
-            if alloc.offset >= memory_layout.data.size:
+            # FIXME: find better way to choice constant variable
+            # in webgl, non-constant variable have offset -1.
+            # alloc.size does not match meaningful size due to rounding up in factorizing size to texture width and height
+            if alloc.offset < 0 or alloc.offset >= memory_layout.data.size:
                 continue
 
-            single_data = memory_layout.data[alloc.offset:alloc.offset + alloc.size]
+            constant_size = alloc.constant_size if isinstance(alloc, WebGLAllocation) else alloc.size
+            single_data = memory_layout.data[alloc.offset:alloc.offset + constant_size]
             all_code += self._single_encode(single_data, alloc)
 
         return all_code

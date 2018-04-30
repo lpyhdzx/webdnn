@@ -1,4 +1,4 @@
-from typing import Dict, List, Set, Union, Sequence
+from typing import Dict, List, Set, Union, Sequence, Optional
 
 import numpy as np
 
@@ -31,12 +31,13 @@ def _align(offset: int, unit: int = 1):
 
 class WebGLAllocation(Allocation):
     def __init__(self, width: IntLike, height: IntLike, channel_mode: ChannelModeEnum, begin: int = _T_UNKNOWN, end: int = _T_UNKNOWN,
-                 name: str = None):
+                 name: str = None, constant_size: Optional[int] = None):
         super(WebGLAllocation, self).__init__(size=width * height * ChannelMode.elements_per_pixel(channel_mode),
                                               offset=-1, begin=begin, end=end, name=name)
         self.width = width
         self.height = height
         self.channel_mode = channel_mode
+        self.constant_size = constant_size  # meaningful size is needed in weight packing
 
     def _to_serializable_(self):
         return {
@@ -129,7 +130,7 @@ def _get_allocations(graph: Graph, operators: Sequence[Operator], variables: Seq
         # Constant variable cannot be released
         height, width = TextureShape.get(v)
         width = (width + ChannelMode.elements_per_pixel(v) - 1) // ChannelMode.elements_per_pixel(v)
-        allocations[v] = WebGLAllocation(width=width, height=height, channel_mode=ChannelMode.get(v), begin=0, end=T_LAST, name=v.name)
+        allocations[v] = WebGLAllocation(width=width, height=height, channel_mode=ChannelMode.get(v), begin=0, end=T_LAST, name=v.name, constant_size=v.size)
         allocated.add(v)
 
     for v in graph.inputs:
@@ -235,6 +236,7 @@ def _update_constant_offset(allocations: WebGLAllocationDict):
     for v, a in allocations.items():  # type: ConstantVariable, WebGLAllocation
         data.append(v.data.flatten())
         a.offset = offset
+        assert a.constant_size == v.size  # FIXME: remove it when better way to specify size is implemented
         offset = _align(offset + v.size)
 
     return np.concatenate(data) if len(data) > 0 else np.empty((0,))
